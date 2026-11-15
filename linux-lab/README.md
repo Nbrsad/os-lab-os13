@@ -246,10 +246,13 @@ sudo bash linux-lab/scripts/os-13-apt-safe-wrapper.sh --apply --yes --noninterac
 ```
 
 Dry-run is the default and needs no root: it prints the ordered commands and the
-simulated plan and changes nothing. Every apt call and its output land in
-`/tmp/os-13-apt-last.log` (override with `OS13_LOG`), so the review and the PR
-can quote what actually ran. Offline tests drive the same order through a stub
-`apt-get` — no root, no network, no real upgrade:
+simulated plan and changes nothing. Every apt call and its output land in a
+private per-user log, `${TMPDIR:-/tmp}/os-13-apt-last-<uid>.log` (override with
+`OS13_LOG`; created `0600`, never followed through a symlink), so the review and
+the PR can quote what actually ran. A plan that removes packages is listed and,
+with `--yes`, needs `--allow-removals`. The reviewed plan is re-simulated before
+it is applied. Offline tests drive the same order through a stub `apt-get` — no
+root, no network, no real upgrade:
 `python3 -m unittest discover -s linux-lab/tests -p 'test_os13*' -v`.
 See [os-13/VERIFY.md](os-13/VERIFY.md) for the expected output, the guard cases
 and the limits (no snap/flatpak, no autoremove, no reboot).

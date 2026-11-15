@@ -12,8 +12,10 @@ yetkili lab/sanal makine içindedir.
 | G2 | **Kırık index'te guard**: `update` başarısızsa upgrade hiç başlamaz | `apt-get update` hata kodu → `GUARD` mesajı + çıkış kodu `1`, upgrade çağrısı yok |
 | G3 | **Kısmi index'te guard**: `update` `exit 0` verse bile "Failed to fetch" varsa durur | Uyarı satırı yakalanıyor; `--allow-partial` bilinçli istisna |
 | G4 | **Dry-run varsayılan**: hiçbir şeyi değiştirmez | `apt-get update` ve upgrade çağrılmıyor; yalnızca `-s` (simülasyon) |
-| G5 | **Görünürlük**: tüm komut ve çıktı log'da | `${TMPDIR:-/tmp}/os-13-apt-last.log` |
+| G5 | **Görünürlük**: tüm komut ve çıktı log'da | `${TMPDIR:-/tmp}/os-13-apt-last-<uid>.log` (0600, symlink takılmaz) |
 | G6 | **Uygulama sonrası ölçüm**: "bitti" demek yerine yeniden simüle eder | Post-check `apt-get -s upgrade` + kalan paket sayısı |
+| G7 | **Gözden geçirilen plan = uygulanan plan**: apply öncesi yeniden simülasyon | Plan değiştiyse `GUARD`, upgrade çağrılmaz |
+| G8 | **Kaldırma planı gizli kalmaz**: `Remv` satırları listelenir | `--yes` ile kaldırma için `--allow-removals` zorunlu |
 
 ## 2. Çalıştırma komutları
 
@@ -37,6 +39,9 @@ sudo bash linux-lab/scripts/os-13-apt-safe-wrapper.sh --apply --yes --noninterac
 
 # 6) Genişletilmiş plan (yeni paket/kaldırma içerebilir)
 sudo bash linux-lab/scripts/os-13-apt-safe-wrapper.sh --dist-upgrade
+
+# 7) Kaldırma içeren planı etkileşimsiz uygulamak için ek onay
+sudo bash linux-lab/scripts/os-13-apt-safe-wrapper.sh --dist-upgrade --apply --yes --allow-removals
 ```
 
 Çıkış kodları: `0` temiz, `1` guard veya apt adımı başarısız, `2` kullanım hatası.
@@ -53,7 +58,7 @@ step 3   : apt-get -y upgrade
 apt-get  : apt-get
 distro   : Ubuntu 26.04 LTS
 free     : 18432 MB on /var/cache/apt
-log      : /tmp/os-13-apt-last.log
+log      : /tmp/os-13-apt-last-1000.log
 [ok]   preflight: apt-get is usable
 
 == step 1/3 - refresh the package index (apt-get update) ==
@@ -92,7 +97,7 @@ summary
   order     : update -> simulate -> upgrade
   update    : skipped (dry-run)
   plan      : 3 package(s) to upgrade, 2 kept back
-  log       : /tmp/os-13-apt-last.log
+  log       : /tmp/os-13-apt-last-1000.log
 
 nothing was changed. Run the same order for real with:
   sudo bash linux-lab/scripts/os-13-apt-safe-wrapper.sh --apply
@@ -139,7 +144,7 @@ summary
   update    : ok
   plan      : 3 package(s) to upgrade, 2 kept back
   remaining : 0 package(s) still upgradeable
-  log       : /tmp/os-13-apt-last.log
+  log       : /tmp/os-13-apt-last-1000.log
 ```
 
 ## 4. Otomatik testler (offline, root/ağ gerekmez)
@@ -151,7 +156,7 @@ veritabanına, ağa veya sisteme dokunulmaz; ölçülen şey sıra ve guard davr
 python3 -m unittest discover -s linux-lab/tests -p 'test_os13*' -v
 ```
 
-Sonuç: **11 test, OK**
+Sonuç: **23 test, OK**
 
 | Test | Doğruladığı |
 |---|---|
@@ -160,12 +165,24 @@ Sonuç: **11 test, OK**
 | `test_unknown_argument_is_a_usage_error` | bilinmeyen argüman → çıkış `2` |
 | `test_dry_run_is_default_and_runs_no_change` | yalnızca `--version` ve `-s upgrade` çağrıldı |
 | `test_failed_update_stops_before_upgrade` | update hatası → `GUARD`, upgrade çağrılmadı |
-| `test_order_is_update_then_simulate_then_upgrade` | çağrı sırası: `update`, `-s upgrade`, `-y upgrade` |
+| `test_order_is_update_then_simulate_then_upgrade` | çağrı sırası: `update`, `-s upgrade`, re-check `-s upgrade`, `-y upgrade` |
+| `test_apply_does_not_duplicate_the_subcommand` | apply komutu `apt-get -y upgrade`; `upgrade -y upgrade` değil |
 | `test_partial_index_failure_is_a_guard` | `Failed to fetch` → guard |
 | `test_allow_partial_continues_on_request` | `--allow-partial` ile devam |
 | `test_empty_plan_skips_the_upgrade` | yapılacak iş yoksa upgrade atlanır |
 | `test_dist_upgrade_selection_is_honoured` | `--dist-upgrade` doğru alt komuta gider |
 | `test_noninteractive_keeps_local_configs` | `--noninteractive` → `Dpkg::Options::=--force-confold` |
+| `test_noninteractive_frontend_is_on_the_command_line` | `DEBIAN_FRONTEND` sudo üzerinden de gider |
+| `test_sudo_prefix_with_options_is_split` | `SUDO="sudo -n"` gibi ön ekler ayrıştırılır |
+| `test_plan_change_between_sim_and_apply_is_a_guard` | plan değiştiyse apply iptal |
+| `test_failed_post_check_is_not_a_success` | post-check başarısızsa çıkış `1` |
+| `test_removal_plan_is_not_applied_unattended_without_ack` | kaldırma için `--allow-removals` gerekir |
+| `test_allow_removals_permits_the_plan` | `--allow-removals` ile kaldırma uygulanır |
+| `test_removal_only_plan_is_not_treated_as_empty` | sadece `Remv` olan plan boş sayılmaz |
+| `test_log_file_is_created_private` | log `0600` |
+| `test_log_symlink_is_not_followed` | log yolu symlink ise hedefi ezmez |
+| `test_unwritable_log_falls_back_and_still_runs` | yazılamayan log'da özel log'a düşer |
+| `test_default_log_path_includes_the_uid` | varsayılan log kullanıcıya özel |
 
 ## 5. PR öncesi zorunlu kontrol
 
@@ -173,8 +190,9 @@ Sonuç: **11 test, OK**
 ./scripts/run-tests.sh --quick
 ```
 
-Bu, `linux-lab/tests` (OS-30 + OS-13) birim testlerini ve `bash -n` sözdizimi
-kapısını çalıştırır. Depodaki 83 `*.sh` dosyası `bash -n` ile temiz geçer.
+Bu, `linux-lab/tests` (OS-30 + OS-13) birim testlerini **ve** depo geneli
+`bash -n` sözdizimi kapısını çalıştırır. Depodaki 83 `*.sh` dosyası `bash -n`
+ile temiz geçer.
 
 ## 6. Lab VM'de canlı doğrulama (kanıt videosu senaryosu, 2–4 dk)
 
@@ -201,3 +219,9 @@ kapısını çalıştırır. Depodaki 83 `*.sh` dosyası `bash -n` ile temiz ge�
   etkileşimli çalıştırmada sorulur; etkileşimsiz işlerde ikisini birlikte kullanın.
 - Kısmi index hatasını `--allow-partial` ile geçmek bilinçli bir override'dır:
   eski metadata ile upgrade planlanır, log bunu kaydeder.
+- Kaldırma içeren bir plan (`--dist-upgrade`) etkileşimli çalıştırmada ayrıca
+  gösterilir; `--yes` ile uygulanması `--allow-removals` ister.
+- Apply öncesi plan yeniden simüle edilir; başka bir apt işlemi planı
+  değiştirdiyse wrapper uygulamaz.
+- Log dosyası `0600` modunda oluşturulur, symlink takılmaz; aynı yolu iki
+  çalıştırma kullanırsa ikinci çalıştırma özel bir log'a yazar.

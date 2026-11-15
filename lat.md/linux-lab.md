@@ -128,9 +128,13 @@ is the deliberate override. There is no flag to skip the index refresh.
 
 Dry-run is the default: it prints the ordered commands and the simulated
 plan, needs no root and changes nothing. Every apt call and its output is
-logged to `/tmp/os-13-apt-last.log` (override with `OS13_LOG`); the run ends
-with a measured post-check instead of a claim. Common failures (lock, DNS,
-disk, GPG key, 404) get a one-line hint pointing at OS-15, OS-25 and OS-37.
+logged to a private per-user file
+(`${TMPDIR:-/tmp}/os-13-apt-last-<uid>.log`, override with `OS13_LOG`, mode
+`0600`, never through a symlink); the run ends with a measured post-check
+instead of a claim. Before an apply, the shown plan is re-simulated so another
+apt run cannot swap the packages underneath it. A `Remv` plan is listed and,
+unattended, needs `--allow-removals`. Common failures (lock, DNS, disk, GPG
+key, 404) get a one-line hint pointing at OS-15, OS-25 and OS-37.
 
 ```bash
 bash linux-lab/scripts/os-13-apt-safe-wrapper.sh                  # dry-run, the default

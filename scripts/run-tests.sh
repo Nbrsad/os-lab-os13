@@ -6,18 +6,18 @@
 #
 # Usage:
 #   scripts/run-tests.sh            run everything
-#   scripts/run-tests.sh --quick    unit suites only (stage 1); skips stages 2-5
+#   scripts/run-tests.sh --quick    unit suites + bash -n; skips stages 2, 4, 5
 #   scripts/run-tests.sh --no-venv  use the current environment, do not create .venv
 #   scripts/run-tests.sh -h|--help  show this help
 #
 # Stages:
-#   1. unit suites                          [required; all that --quick runs]
+#   1. unit suites                          [required]
 #      android (pytest), source-lab engine (pytest), cleanup-lab reference
 #      and engine (unittest), cleanup-lab qrust-scan (cargo test; skipped
 #      without cargo), linux-lab unittest suites (OS-30 hardening, OS-13
 #      apt safe wrapper)
 #   2. android sample analysis pipeline     [smoke, non-fatal]
-#   3. shell script syntax check (bash -n)  [required]
+#   3. shell script syntax check (bash -n)  [required; also runs in --quick]
 #   4. lat.md knowledge-graph check         [if `lat` is installed]
 #   5. dashboard typecheck + build freshness [if dashboard/node_modules exists]
 set -uo pipefail
@@ -145,8 +145,21 @@ else
   bad "no python3 for linux-lab/tests (OS-30 + OS-13)"
 fi
 
+check_shell_syntax() {
+  hdr "Stage 3: shell script syntax (bash -n)"
+  sh_fail=0; sh_count=0
+  while IFS= read -r -d '' s; do
+    sh_count=$((sh_count+1))
+    bash -n "$s" 2>/dev/null || { printf '  %s[fail]%s %s\n' "$RED" "$RESET" "${s#"$ROOT"/}"; sh_fail=$((sh_fail+1)); }
+  done < <(find "$ROOT" \( -type d \( -name .git -o -name node_modules \) \) -prune -o -type f -name '*.sh' -print0)
+  if [ "$sh_fail" -eq 0 ]; then ok "all $sh_count shell scripts parse"; else bad "$sh_fail of $sh_count shell scripts failed bash -n"; fi
+}
+
 if [ "$QUICK" = "1" ]; then
-  printf '\n%s--quick: skipping remaining stages%s\n' "$YELLOW" "$RESET"
+  # --quick is advertised as the required gate. That gate includes the
+  # repository-wide syntax check, so stage 3 runs here too.
+  check_shell_syntax
+  printf '\n%s--quick: skipping stages 2, 4 and 5%s\n' "$YELLOW" "$RESET"
 else
   # --- Stage 2: sample analysis smoke test ---------------------------------
   hdr "Stage 2: android sample analysis pipeline (smoke)"
@@ -163,14 +176,7 @@ else
     skip "sample analysis scripts unavailable"
   fi
 
-  # --- Stage 3: shell script syntax --------------------------------------
-  hdr "Stage 3: shell script syntax (bash -n)"
-  sh_fail=0; sh_count=0
-  while IFS= read -r -d '' s; do
-    sh_count=$((sh_count+1))
-    bash -n "$s" 2>/dev/null || { printf '  %s[fail]%s %s\n' "$RED" "$RESET" "${s#"$ROOT"/}"; sh_fail=$((sh_fail+1)); }
-  done < <(find "$ROOT" \( -type d \( -name .git -o -name node_modules \) \) -prune -o -type f -name '*.sh' -print0)
-  if [ "$sh_fail" -eq 0 ]; then ok "all $sh_count shell scripts parse"; else bad "$sh_fail of $sh_count shell scripts failed bash -n"; fi
+  check_shell_syntax
 
   # --- Stage 4: lat graph check ------------------------------------------
   hdr "Stage 4: lat.md knowledge graph"

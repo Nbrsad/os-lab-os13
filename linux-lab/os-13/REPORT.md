@@ -21,15 +21,17 @@ hiçbir şeyi değiştirmeyen bir Bash aracı geliştirdim:
 - **Dry-run varsayılan:** Argümansız çalıştırma yalnızca planı ve `apt-get -s`
   çıktısını gösterir; `update` ve upgrade çağrılmaz, root gerekmez.
 - **Okunur çıktı + log:** Her apt komutu zaman damgasıyla tek bir log dosyasına
-  yazılır (`/tmp/os-13-apt-last.log`), ekrana özet ve "n paket yükselecek,
+  yazılır (`${TMPDIR:-/tmp}/os-13-apt-last-<uid>.log`, mod `0600`, symlink
+  takılmaz), ekrana özet ve "n paket yükselecek,
   m geride tutuldu (kept back)" satırı basılır.
 - **Anlaşılır hata:** Kilit (`Could not get lock`), DNS (`Temporary failure
   resolving`), disk dolu, eksik GPG anahtarı ve 404/hash uyuşmazlığı için
   "ne yapmalı" ipucu basar (OS-15/25/37'ye yönlendirir).
-- **`--dist-upgrade`, `--yes`, `--noninteractive`, `--allow-partial`:** Küçük
+- **`--dist-upgrade`, `--yes`, `--noninteractive`, `--allow-partial`,
+  `--allow-removals`:** Küçük
   ama gerçek seçenekler; `--noninteractive` dpkg conffile sorusunda etkileşimsiz
   çalıştırmanın asılı kalmasını engeller.
-- **`linux-lab/tests/test_os13_apt_safe_wrapper.py`:** 11 birim testi. Testler
+- **`linux-lab/tests/test_os13_apt_safe_wrapper.py`:** 23 birim testi. Testler
   `PATH`'e konan stub bir `apt-get` ile çalışır: ağ yok, root yok, gerçek paket
   değişmez; ölçülen şey çağrı sırası ve guard davranışıdır.
 - **Doküman:** `linux-lab/os-13/VERIFY.md` (çalıştırma komutları, beklenen çıktı,
@@ -53,3 +55,11 @@ hiçbir şeyi değiştirmeyen bir Bash aracı geliştirdim:
 - Bir de şunu gördüm: `apt-get update` her zaman "başarılı" demek değil —
   `exit 0` olsa bile eksik index ile dönebiliyor. Gerçek bir tehlike bu sessiz
   durum; sıra zorlaması tek başına yetmiyor, çıktıyı da denetlemek gerekiyor.
+- Sourcery incelemesi 13 bulgu verdi; 12'sini kapattım (biri zaten
+  dokümante edilmişti). Kritik olan log symlink'iydi: root çalıştırmada
+  `/tmp` altındaki log yolu bir kullanıcı symlink'i olabilir ve hedef dosyayı
+  ezerek silebilir. Artık log `0600`, kullanıcıya özel ve symlink takılmıyor.
+  Ayrıca apply komutundaki tekrarlanan alt komut, simülasyon-apply arası
+  plan değişimi, sudo ile `DEBIAN_FRONTEND` geçişi, `SUDO` seçenekli ön ekler,
+  sadece kaldırma içeren planlar, başarısız post-check'ın `0` dönmesi ve
+  `--quick` kapısının `bash -n` atlaması giderildi.

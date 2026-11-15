@@ -17,7 +17,7 @@ set -euo pipefail
 # Exit codes: 0 = clean run, 1 = a guard or an apt step failed, 2 = usage error.
 
 readonly PROG="${0##*/}"
-readonly VERSION="1.0.0"
+readonly VERSION="1.1.0"
 
 # apt-get comes from PATH on purpose: the offline tests in
 # linux-lab/tests/test_os13_apt_safe_wrapper.py put a stub apt-get on PATH and
@@ -25,25 +25,34 @@ readonly VERSION="1.0.0"
 APT_GET="${APT_GET:-apt-get}"
 # Privilege prefix for --apply. Empty means "already privileged" (root, a
 # container, or a test stub), and then no escalation is attempted.
+# May contain options ("sudo -n", "doas -u root"); it is split into argv.
 SUDO="${SUDO-sudo}"
 
 MODE="dry-run"
 ASSUME_YES=0
 ALLOW_PARTIAL=0
+ALLOW_REMOVALS=0
 NONINTERACTIVE=0
 SUBCOMMAND="upgrade"
 
 UPDATE_OK=0
 UPDATE_STATE="not run"
 PLAN_COUNT=0
+PLAN_INST=0
+PLAN_REMV=0
 NEW_INSTALLED=0
 KEPT_BACK=0
 REMAIN_AFTER=-1
+PLAN_SIGNATURE=""
 PRIV=()
 APT_RC=0
 APT_CAPTURE=""
+APPLY_RC=0
+LOG_LOCKED=0
 
-LOG_FILE="${OS13_LOG:-${TMPDIR:-/tmp}/os-13-apt-last.log}"
+# Per-user default: a root-owned /tmp/os-13-apt-last.log would make a later
+# unprivileged dry-run fail on truncate. Override with OS13_LOG.
+LOG_FILE="${OS13_LOG:-${TMPDIR:-/tmp}/os-13-apt-last-$(id -u).log}"
 STEP_DIR=""
 
 if [ -t 1 ]; then
@@ -54,7 +63,8 @@ fi
 
 usage() {
   cat <<EOF
-Usage: $PROG [--dry-run | --apply] [--yes] [--dist-upgrade] [--allow-partial] [--help]
+Usage: $PROG [--dry-run | --apply] [--yes] [--dist-upgrade] [--allow-partial]
+             [--allow-removals] [--noninteractive] [--help]
 
 Ordered apt upgrade pipeline. Step 1 (index refresh) must succeed before the
 upgrade may start; there is no flag to skip it, that is the point.
@@ -68,17 +78,21 @@ upgrade may start; there is no flag to skip it, that is the point.
                    and removals; read the plan before you agree).
   --allow-partial  continue when some index files failed to download
                    (explicit override of the partial-index guard).
-  --noninteractive unattended upgrade: DEBIAN_FRONTEND=noninteractive and
-                   keep local config files, so a dpkg conffile prompt cannot
-                   hang an --yes run. Read the log afterwards.
+  --allow-removals apply a plan that removes packages. Required with --yes
+                   when the simulated plan contains Remv actions.
+  --noninteractive unattended upgrade: DEBIAN_FRONTEND=noninteractive is
+                   passed to the elevated apt process (including through
+                   sudo) and local config files are kept, so a dpkg conffile
+                   prompt cannot hang an --yes run. Read the log afterwards.
   -h, --help       this help.
   --version        print the version and exit.
 
 Environment:
   APT_GET   apt-get binary to call (default: apt-get; tests use a stub).
   SUDO      privilege prefix for --apply (default: sudo; set it empty when the
-            caller is already privileged).
-  OS13_LOG  log file (default: $LOG_FILE).
+            caller is already privileged). Options are allowed: SUDO="sudo -n".
+  OS13_LOG  log file (default: $LOG_FILE). Created 0600, never followed
+            through a symlink.
 
 Examples:
   sudo bash linux-lab/scripts/os-13-apt-safe-wrapper.sh                # plan
@@ -112,7 +126,13 @@ show_capture() {
 run_apt() {
   local tag="$1"; shift
   local file="$STEP_DIR/$tag.log"
-  local -a cmd=("${PRIV[@]}" "$APT_GET" "$@")
+  local -a cmd=("${PRIV[@]}")
+  # sudo strips the caller's environment; put the frontend on the command
+  # line so an unattended apply cannot hang on a debconf prompt.
+  if [ "$NONINTERACTIVE" -eq 1 ]; then
+    cmd+=(env DEBIAN_FRONTEND=noninteractive)
+  fi
+  cmd+=("$APT_GET" "$@")
   {
     printf '# %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf '$ %s\n' "${cmd[*]}"
@@ -152,6 +172,70 @@ diagnose() {
   fi
 }
 
+# plan_signature FILE - stable "action package" pairs, so a re-check can be
+# compared with the plan the operator actually saw.
+plan_signature() {
+  awk '$1 == "Inst" || $1 == "Remv" { print $1, $2 }' "$1" | sort
+}
+
+private_log() {
+  local p
+  p=$(mktemp "${TMPDIR:-/tmp}/os-13-apt-log.XXXXXXXX")
+  chmod 600 "$p" 2>/dev/null || true
+  LOG_FILE="$p"
+  LOG_LOCKED=0
+}
+
+# open_log - pick a writable, private, non-symlink log and start this run's
+# section. Never truncate through a symlink; never share a truncated file
+# between concurrent runs.
+open_log() {
+  local want="$LOG_FILE"
+
+  if [ -L "$want" ]; then
+    warn "log path is a symlink; not writing through it: $want"
+    private_log
+    return 0
+  fi
+
+  if [ -e "$want" ] && [ ! -f "$want" ]; then
+    warn "log path is not a regular file: $want"
+    private_log
+    return 0
+  fi
+
+  if ! ( umask 077; : >>"$want" ) 2>/dev/null; then
+    warn "cannot write the log ($want); using a private log"
+    private_log
+    return 0
+  fi
+  chmod 600 "$want" 2>/dev/null || true
+  LOG_FILE="$want"
+
+  # Same-path concurrency: serialize with flock when we can. Without a lock
+  # we append (never truncate), so a second run cannot erase the first.
+  if command -v flock >/dev/null 2>&1; then
+    local lock="$LOG_FILE.lock"
+    if [ -L "$lock" ]; then
+      warn "log lock is a symlink; appending without a shared lock"
+    elif ( umask 077; : >>"$lock" ) 2>/dev/null && exec 9>>"$lock" 2>/dev/null; then
+      if flock -n 9 2>/dev/null; then
+        LOG_LOCKED=1
+        : >"$LOG_FILE"
+      else
+        warn "another OS-13 run holds this log; using a private log"
+        private_log
+        return 0
+      fi
+    fi
+  fi
+
+  {
+    printf '===== OS-13 %s pid=%s mode=%s =====\n' \
+      "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$$" "$MODE"
+  } >>"$LOG_FILE"
+}
+
 resolve_privileges() {
   PRIV=()
   if [ "$MODE" != "apply" ]; then
@@ -164,10 +248,15 @@ resolve_privileges() {
     warn "not root and SUDO is empty; assuming this session may already write /var/lib/apt"
     return 0
   fi
-  if ! command -v "$SUDO" >/dev/null 2>&1; then
-    die "--apply needs root: '$SUDO' is not installed. Run as root or set SUDO=<prefix>"
+  local -a parts=()
+  read -r -a parts <<<"$SUDO"
+  if [ "${#parts[@]}" -eq 0 ]; then
+    die "--apply needs root: SUDO='$SUDO' did not name a program"
   fi
-  PRIV=("$SUDO")
+  if ! command -v "${parts[0]}" >/dev/null 2>&1; then
+    die "--apply needs root: '${parts[0]}' is not installed. Run as root or set SUDO=<prefix>"
+  fi
+  PRIV=("${parts[@]}")
 }
 
 print_header() {
@@ -180,7 +269,7 @@ print_header() {
     say "mode     : apply (runs in order, then changes the system)"
   fi
   say "step 3   : apt-get -y $SUBCOMMAND"
-  say "apt-get  : $APT_GET${PRIV[0]:+ (via ${PRIV[0]})}"
+  say "apt-get  : $APT_GET${PRIV[*]:+ (via ${PRIV[*]})}"
   if [ -r /etc/os-release ]; then
     pretty=$(sed -n 's/^PRETTY_NAME="\{0,1\}\(.*\)"\{0,1\}$/\1/p' /etc/os-release | head -n 1)
   fi
@@ -261,7 +350,10 @@ do_plan() {
   fi
   show_capture "$APT_CAPTURE" 24
 
-  PLAN_COUNT=$(awk '$1 == "Inst" { print $2 }' "$APT_CAPTURE" | sort -u | wc -l | tr -d ' ')
+  PLAN_INST=$(awk '$1 == "Inst" { print $2 }' "$APT_CAPTURE" | sort -u | wc -l | tr -d ' ')
+  PLAN_REMV=$(awk '$1 == "Remv" { print $2 }' "$APT_CAPTURE" | sort -u | wc -l | tr -d ' ')
+  PLAN_COUNT=$((PLAN_INST + PLAN_REMV))
+  PLAN_SIGNATURE=$(plan_signature "$APT_CAPTURE")
   NEW_INSTALLED=$(extract_number "$APT_CAPTURE" '[0-9]+ newly installed')
   KEPT_BACK=$(extract_number "$APT_CAPTURE" '[0-9]+ not upgraded')
 
@@ -273,8 +365,17 @@ do_plan() {
   say ""
   say "packages that would be upgraded:"
   awk '$1 == "Inst" { print $2 }' "$APT_CAPTURE" | sort -u | head -n 15 | sed 's/^/    - /'
-  if [ "$PLAN_COUNT" -gt 15 ]; then
-    say "    ... and $((PLAN_COUNT - 15)) more (full list in $LOG_FILE)"
+  if [ "$PLAN_INST" -gt 15 ]; then
+    say "    ... and $((PLAN_INST - 15)) more (full list in $LOG_FILE)"
+  fi
+  if [ "$PLAN_REMV" -gt 0 ]; then
+    say ""
+    say "packages that would be REMOVED:"
+    awk '$1 == "Remv" { print $2 }' "$APT_CAPTURE" | sort -u | head -n 15 | sed 's/^/    - /'
+    if [ "$PLAN_REMV" -gt 15 ]; then
+      say "    ... and $((PLAN_REMV - 15)) more (full list in $LOG_FILE)"
+    fi
+    warn "$PLAN_REMV package(s) would be removed; read this list before applying."
   fi
   if [ "$NEW_INSTALLED" -gt 0 ]; then
     warn "$NEW_INSTALLED new package(s) would be pulled in"
@@ -284,7 +385,7 @@ do_plan() {
     warn "$KEPT_BACK package(s) kept back: phased updates or new dependencies."
     warn "upgrade leaves them alone on purpose; --dist-upgrade shows the wider plan."
   fi
-  ok "plan: $PLAN_COUNT package(s) upgradeable, $KEPT_BACK kept back"
+  ok "plan: $PLAN_INST package(s) upgradeable, $PLAN_REMV to remove, $KEPT_BACK kept back"
 }
 
 # step 3 ---------------------------------------------------------------------
@@ -311,11 +412,18 @@ do_apply() {
     return 0
   fi
 
+  if [ "$PLAN_REMV" -gt 0 ]; then
+    if [ "$ASSUME_YES" -eq 1 ] && [ "$ALLOW_REMOVALS" -ne 1 ]; then
+      die "the plan removes $PLAN_REMV package(s); unattended apply needs --allow-removals"
+    fi
+  fi
+
   if [ "$ASSUME_YES" -ne 1 ]; then
     if [ ! -t 0 ]; then
       die "confirmation needs a terminal; re-run with --yes for an unattended run"
     fi
-    printf '%s will be upgraded. Type "yes" to continue: ' "$PLAN_COUNT package(s)"
+    printf '%s will be upgraded, %s removed. Type "yes" to continue: ' \
+      "$PLAN_INST package(s)" "$PLAN_REMV package(s)"
     read -r answer
     if [ "$answer" != "yes" ]; then
       say "aborted by the operator; nothing was changed."
@@ -323,10 +431,32 @@ do_apply() {
     fi
   fi
 
+  # Another apt run could change indexes or package state after the plan was
+  # shown. Re-simulate and compare, so the operator never applies a plan they
+  # did not review.
+  step "step 3/3 - re-check the plan is still the one you reviewed"
+  run_apt recheck -s "$SUBCOMMAND"
+  if [ "$APT_RC" -ne 0 ]; then
+    show_capture "$APT_CAPTURE" 20
+    diagnose "$APT_CAPTURE"
+    err "GUARD: re-check simulation failed; refusing to apply a stale plan."
+    APPLY_RC=1
+    return 0
+  fi
+  local now_sig
+  now_sig=$(plan_signature "$APT_CAPTURE")
+  if [ "$now_sig" != "$PLAN_SIGNATURE" ]; then
+    err "GUARD: the upgrade plan changed after it was shown (another apt ran?)."
+    err "       Refusing to apply a plan you did not review. Re-run this wrapper."
+    APPLY_RC=1
+    return 0
+  fi
+  ok "plan unchanged"
+
   if [ "$NONINTERACTIVE" -eq 1 ]; then
     up_args=(-y -o Dpkg::Options::=--force-confold)
   fi
-  run_apt "$SUBCOMMAND" "${up_args[@]}" "$SUBCOMMAND"
+  run_apt apply "${up_args[@]}" "$SUBCOMMAND"
   if [ "$APT_RC" -ne 0 ]; then
     show_capture "$APT_CAPTURE" 30
     diagnose "$APT_CAPTURE"
@@ -349,7 +479,8 @@ do_apply() {
       warn "see: apt list --upgradable"
     fi
   else
-    warn "post-check could not re-simulate (exit $APT_RC); check the log"
+    warn "post-check could not re-simulate (exit $APT_RC); treating the run as failed"
+    APPLY_RC=1
   fi
   if [ -e /var/run/reboot-required ]; then
     warn "a reboot is required to finish this upgrade (/var/run/reboot-required exists)"
@@ -361,7 +492,7 @@ print_summary() {
   say "summary"
   say "  order     : update -> simulate -> $SUBCOMMAND"
   say "  update    : $UPDATE_STATE"
-  say "  plan      : $PLAN_COUNT package(s) to upgrade, $KEPT_BACK kept back"
+  say "  plan      : $PLAN_INST package(s) to upgrade, $PLAN_REMV to remove, $KEPT_BACK kept back"
   if [ "$MODE" = "apply" ] && [ "$REMAIN_AFTER" -ge 0 ]; then
     say "  remaining : $REMAIN_AFTER package(s) still upgradeable"
   fi
@@ -381,6 +512,7 @@ main() {
       --yes|-y) ASSUME_YES=1 ;;
       --dist-upgrade) SUBCOMMAND="dist-upgrade" ;;
       --allow-partial) ALLOW_PARTIAL=1 ;;
+      --allow-removals) ALLOW_REMOVALS=1 ;;
       --noninteractive) NONINTERACTIVE=1 ;;
       -h|--help) usage; exit 0 ;;
       --version) printf '%s %s\n' "$PROG" "$VERSION"; exit 0 ;;
@@ -393,9 +525,13 @@ main() {
     export DEBIAN_FRONTEND=noninteractive
   fi
 
+  # Logs and step captures must not be world-readable: apt output can include
+  # private repository hostnames and the full upgradeable set.
+  umask 077
+
+  open_log
   STEP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/os-13-apt.XXXXXX")
   trap 'rm -rf -- "$STEP_DIR"' EXIT
-  : >"$LOG_FILE"
 
   resolve_privileges
   print_header
@@ -404,6 +540,7 @@ main() {
   do_plan
   do_apply
   print_summary
+  exit "$APPLY_RC"
 }
 
 main "$@"
