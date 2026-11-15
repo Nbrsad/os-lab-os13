@@ -218,14 +218,18 @@ open_log() {
     local lock="$LOG_FILE.lock"
     if [ -L "$lock" ]; then
       warn "log lock is a symlink; appending without a shared lock"
-    elif ( umask 077; : >>"$lock" ) 2>/dev/null && exec 9>>"$lock" 2>/dev/null; then
-      if flock -n 9 2>/dev/null; then
-        LOG_LOCKED=1
-        : >"$LOG_FILE"
-      else
-        warn "another OS-13 run holds this log; using a private log"
-        private_log
-        return 0
+    else
+      ( umask 077; : >>"$lock" ) 2>/dev/null || true
+      # Never put 2>/dev/null on this exec: it would stay in effect for the
+      # whole script and swallow every later warn/err on stderr.
+      if exec 9>>"$lock"; then
+        if flock -n 9 2>/dev/null; then
+          LOG_LOCKED=1
+          : >"$LOG_FILE"
+        else
+          warn "another OS-13 run holds this log; using a private log"
+          private_log
+        fi
       fi
     fi
   fi

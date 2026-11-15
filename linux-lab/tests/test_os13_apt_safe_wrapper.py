@@ -264,7 +264,11 @@ class AptSafeWrapperTest(unittest.TestCase):
         bindir.mkdir()
         fake = bindir / "gotobin"
         fake.write_text(
-            "#!/usr/bin/env bash\nprintf 'SUDO %s\\n' \"$*\" >> \"$OS13_STUB_LOG\"\nexec \"$@\"\n",
+            "#!/usr/bin/env bash\n"
+            "printf 'SUDO %s\\n' \"$*\" >> \"$OS13_STUB_LOG\"\n"
+            "# Drop a leading -n like a real sudo would, so exec gets the command.\n"
+            "if [ \"${1:-}\" = \"-n\" ]; then shift; fi\n"
+            "exec \"$@\"\n",
             encoding="utf-8",
             newline="\n",
         )
