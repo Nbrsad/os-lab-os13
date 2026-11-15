@@ -22,7 +22,9 @@ the committed `dashboard/dist` differs from a fresh build.
 The OS-30 standard-library suite in [[linux-lab/tests/test_hardening.py]],
 [[linux-lab/tests/test_harden_check.py]] and [[linux-lab/tests/test_rollback.py]]
 also runs in stage 1, using fake commands and temporary files rather than live
-security changes. `--quick` runs only the unit suites. The dormant workflow file
+security changes, as does the OS-13 wrapper suite in
+[[linux-lab/tests/test_os13_apt_safe_wrapper.py]] (stub `apt-get`; no real
+upgrade). `--quick` runs only the unit suites. The dormant workflow file
 [[.github/workflows/mobile-sec-scan.yml]] is kept for reference but is disabled.
 
 ## Tests

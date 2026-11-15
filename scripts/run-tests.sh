@@ -14,7 +14,8 @@
 #   1. unit suites                          [required; all that --quick runs]
 #      android (pytest), source-lab engine (pytest), cleanup-lab reference
 #      and engine (unittest), cleanup-lab qrust-scan (cargo test; skipped
-#      without cargo), OS-30 linux-lab hardening mocks (unittest)
+#      without cargo), linux-lab unittest suites (OS-30 hardening, OS-13
+#      apt safe wrapper)
 #   2. android sample analysis pipeline     [smoke, non-fatal]
 #   3. shell script syntax check (bash -n)  [required]
 #   4. lat.md knowledge-graph check         [if `lat` is installed]
@@ -133,15 +134,15 @@ fi
 
 # OS-30 Ubuntu hardening checker: stdlib unittest with fake system commands
 # and temporary fixtures; it changes nothing on the host.
-hdr "OS-30 linux-lab hardening tests (unittest)"
+hdr "linux-lab unittest suites (OS-30 hardening, OS-13 apt wrapper)"
 if [ -n "$PY" ] || pick_python; then
   if ( cd "$ROOT" && "$PY" -m unittest discover -s linux-lab/tests -q ); then
-    ok "linux-lab/tests (OS-30 hardening)"
+    ok "linux-lab/tests (OS-30 + OS-13)"
   else
     bad "linux-lab/tests (OS-30 hardening)"
   fi
 else
-  bad "no python3 for linux-lab/tests (OS-30 hardening)"
+  bad "no python3 for linux-lab/tests (OS-30 + OS-13)"
 fi
 
 if [ "$QUICK" = "1" ]; then
