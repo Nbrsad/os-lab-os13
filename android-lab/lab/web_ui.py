@@ -409,7 +409,11 @@ class LabHttpHandler(BaseHTTPRequestHandler):
         elif len(parts) == 4 and parts[:2] == ["api", "labs"] and parts[2] == "ios" and parts[3] == "resources":
             self._json(200, oslab.ios_resources())
         elif len(parts) == 4 and parts[:2] == ["api", "labs"] and parts[2] == "ios" and parts[3] == "screenshot":
-            self._send_bytes(200, oslab.ios_screenshot(), "image/png", cache="no-store")
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            udid = (query.get("udid") or [""])[0]
+            simulator_device = (query.get("device") or [""])[0]
+            self._send_bytes(200, oslab.ios_real_device_screenshot(udid) if udid else oslab.ios_screenshot(simulator_device or None),
+                             "image/png", cache="no-store")
         elif len(parts) == 4 and parts[:2] == ["api", "labs"] and parts[2] == "macos" and parts[3] == "apps":
             self._json(200, oslab.macos_windows())
         elif len(parts) == 4 and parts[:2] == ["api", "labs"] and parts[2] == "macos" and parts[3] == "control":

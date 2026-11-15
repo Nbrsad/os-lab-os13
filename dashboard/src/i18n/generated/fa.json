@@ -2687,5 +2687,21 @@
   "Check": "بررسی",
   "unreachable": "دست‌نیافتنی",
   "Developer Mode is off on this device.": "حالت توسعه‌دهنده در این دستگاه خاموش است.",
-  "reachable": "در دسترس"
+  "reachable": "در دسترس",
+  "Device details": "جزئیات دستگاه",
+  "Finding paired devices…": "در حال یافتن دستگاه‌های جفت‌شده…",
+  "Lab status and tools": "وضعیت آزمایشگاه و ابزارها",
+  "No paired iPhones or iPads found.": "هیچ آیفون یا آیپد جفت‌شده‌ای پیدا نشد.",
+  "Real device": "دستگاه واقعی",
+  "Real device ·": "دستگاه واقعی ·",
+  "Real-device control needs Developer Mode and a signed WebDriverAgent.": "کنترل دستگاه واقعی به حالت توسعه‌دهنده و WebDriverAgent امضاشده نیاز دارد.",
+  "Refresh real devices": "بازخوانی دستگاه‌های واقعی",
+  "Simulator ·": "شبیه‌ساز ·",
+  "iOS": "iOS",
+  "· iOS": "· iOS",
+  "Host details": "جزئیات میزبان",
+  "Checking simulators…": "در حال بررسی شبیه‌سازها…",
+  "Devices": "دستگاه‌ها",
+  "No simulators are running.": "هیچ شبیه‌سازی در حال اجرا نیست.",
+  "Running simulators": "شبیه‌سازهای در حال اجرا"
 }

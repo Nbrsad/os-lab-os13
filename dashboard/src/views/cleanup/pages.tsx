@@ -520,7 +520,7 @@ export default function CleanupPage({ page: initialPage = "" }: { page?: Cleanup
   return <AppShell activeId={`cleanup-${page || "scan"}`}>
     <TopBar title="Cleanup Lab" icon={<BroomIcon size={20} />} />
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:p-6" onClick={onNavClick}>
-      <PageHead icon={<BroomIcon size={22} />} title="Cleanup Lab" description="Measure reclaimable space, review a plan, then confirm each clean."
+      <PageHead toolbarOnly icon={<BroomIcon size={22} />} title="Cleanup Lab" description="Measure reclaimable space, review a plan, then confirm each clean."
         actions={<>
           {!PUBLIC && status && <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.state === "ready" ? "bg-(--iux-success)/10 text-(--iux-success)" : "bg-(--iux-warning)/10 text-(--iux-warning)"}`}>
             {status.state === "ready" ? "Ready" : status.state === "needs-setup" ? "Setup needed" : "Unavailable"}

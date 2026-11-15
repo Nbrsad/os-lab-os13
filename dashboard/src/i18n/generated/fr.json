@@ -2687,5 +2687,21 @@
   "Check": "Vérifier",
   "unreachable": "injoignable",
   "Developer Mode is off on this device.": "Le mode développeur est désactivé sur cet appareil.",
-  "reachable": "joignable"
+  "reachable": "joignable",
+  "Device details": "Détails de l’appareil",
+  "Finding paired devices…": "Recherche des appareils jumelés…",
+  "Lab status and tools": "État du labo et outils",
+  "No paired iPhones or iPads found.": "Aucun iPhone ni iPad jumelé trouvé.",
+  "Real device": "Appareil réel",
+  "Real device ·": "Appareil réel ·",
+  "Real-device control needs Developer Mode and a signed WebDriverAgent.": "Le contrôle d’un appareil réel nécessite le mode développeur et un WebDriverAgent signé.",
+  "Refresh real devices": "Actualiser les appareils réels",
+  "Simulator ·": "Simulateur ·",
+  "iOS": "iOS",
+  "· iOS": "· iOS",
+  "Host details": "Détails de l’hôte",
+  "Checking simulators…": "Vérification des simulateurs…",
+  "Devices": "Appareils",
+  "No simulators are running.": "Aucun simulateur en cours d’exécution.",
+  "Running simulators": "Simulateurs actifs"
 }

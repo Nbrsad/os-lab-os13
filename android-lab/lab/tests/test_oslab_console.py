@@ -454,6 +454,58 @@ def test_xcode_status_without_developer_dir_still_reports_installed(monkeypatch)
 
 # ── Real devices: devicectl listing, honest when the tooling is missing ──
 
+def test_ios_real_device_screenshot_captures_selected_udid(monkeypatch):
+    monkeypatch.setattr(oslab, "host_os", lambda: "macos")
+    monkeypatch.setattr(oslab, "_which", lambda name: "/usr/bin/xcrun")
+    udid = "C2AC1E99-DB20-5F29-BC57-4EE540DCFEBA"
+    def fake_capture(args, timeout=5, decode="utf-8"):
+        assert args[:5] == ["xcrun", "devicectl", "device", "capture", "screenshot"]
+        assert args[args.index("--device") + 1] == udid
+        with open(args[args.index("--destination") + 1], "wb") as image:
+            image.write(b"\x89PNG\r\n\x1a\nfixture")
+        return 0, ""
+    monkeypatch.setattr(oslab, "_capture", fake_capture)
+    assert oslab.ios_real_device_screenshot(udid).startswith(b"\x89PNG")
+
+
+def test_ios_real_device_screenshot_rejects_invalid_id(monkeypatch):
+    monkeypatch.setattr(oslab, "_capture", lambda *args, **kwargs: pytest.fail("capture should not run"))
+    with pytest.raises(oslab.PlanError, match="UDID"):
+        oslab.ios_real_device_screenshot("not-a-device")
+
+
+def test_ios_screenshot_targets_the_selected_booted_simulator(monkeypatch):
+    udid = "C2AC1E99-DB20-5F29-BC57-4EE540DCFEBA"
+    def fake_capture(args, timeout=5, decode="utf-8"):
+        if args[:4] == ["xcrun", "simctl", "list", "devices"]:
+            return 0, f"iPhone 17 ({udid}) (Booted)\n"
+        assert args[:4] == ["xcrun", "simctl", "io", udid]
+        with open(args[-1], "wb") as image:
+            image.write(b"\x89PNG\r\n\x1a\nfixture")
+        return 0, ""
+    monkeypatch.setattr(oslab, "_capture", fake_capture)
+    assert oslab.ios_screenshot(udid).startswith(b"\x89PNG")
+    with pytest.raises(oslab.PlanError, match="UDID"):
+        oslab.ios_screenshot("not-a-simulator")
+
+
+def test_ios_device_check_does_not_mark_a_paired_offline_phone_reachable(monkeypatch):
+    import json as _json
+    monkeypatch.setattr(oslab, "host_os", lambda: "macos")
+    monkeypatch.setattr(oslab, "_which", lambda name: "/usr/bin/xcrun")
+    udid = "C2AC1E99-DB20-5F29-BC57-4EE540DCFEBA"
+    def fake_capture(args, timeout=5, decode="utf-8"):
+        out = args[args.index("--json-output") + 1]
+        with open(out, "w", encoding="utf-8") as handle:
+            _json.dump({"result": {"deviceProperties": {"name": "Aysan", "developerModeStatus": "enabled"},
+                                   "connectionProperties": {"pairingState": "paired", "tunnelState": "unavailable"}}}, handle)
+        return 0, ""
+    monkeypatch.setattr(oslab, "_capture", fake_capture)
+    result = oslab.ios_device_check(udid)
+    assert result["reachable"] is False and result["state"] == "unavailable"
+    assert "connection tunnel" in result["reason"]
+
+
 def test_ios_devices_lists_connected_devices(monkeypatch):
     import json as _json
     monkeypatch.setattr(oslab, "host_os", lambda: "macos")

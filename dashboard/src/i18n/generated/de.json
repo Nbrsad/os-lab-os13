@@ -2687,5 +2687,21 @@
   "Check": "Prüfen",
   "unreachable": "nicht erreichbar",
   "Developer Mode is off on this device.": "Der Entwicklermodus ist auf diesem Gerät aus.",
-  "reachable": "erreichbar"
+  "reachable": "erreichbar",
+  "Device details": "Gerätedetails",
+  "Finding paired devices…": "Gekoppelte Geräte werden gesucht…",
+  "Lab status and tools": "Laborstatus und Werkzeuge",
+  "No paired iPhones or iPads found.": "Keine gekoppelten iPhones oder iPads gefunden.",
+  "Real device": "Echtes Gerät",
+  "Real device ·": "Echtes Gerät ·",
+  "Real-device control needs Developer Mode and a signed WebDriverAgent.": "Für die Steuerung echter Geräte sind der Entwicklermodus und ein signierter WebDriverAgent erforderlich.",
+  "Refresh real devices": "Echte Geräte aktualisieren",
+  "Simulator ·": "Simulator ·",
+  "iOS": "iOS",
+  "· iOS": "· iOS",
+  "Host details": "Hostdetails",
+  "Checking simulators…": "Simulatoren werden geprüft…",
+  "Devices": "Geräte",
+  "No simulators are running.": "Keine Simulatoren laufen.",
+  "Running simulators": "Laufende Simulatoren"
 }

@@ -2687,5 +2687,21 @@
   "Check": "Denetle",
   "unreachable": "ulaşılamıyor",
   "Developer Mode is off on this device.": "Bu cihazda Geliştirici Modu kapalı.",
-  "reachable": "erişilebilir"
+  "reachable": "erişilebilir",
+  "Device details": "Aygıt ayrıntıları",
+  "Finding paired devices…": "Eşleştirilmiş aygıtlar aranıyor…",
+  "Lab status and tools": "Laboratuvar durumu ve araçları",
+  "No paired iPhones or iPads found.": "Eşleştirilmiş iPhone veya iPad bulunamadı.",
+  "Real device": "Gerçek aygıt",
+  "Real device ·": "Gerçek aygıt ·",
+  "Real-device control needs Developer Mode and a signed WebDriverAgent.": "Gerçek aygıt kontrolü için Geliştirici Modu ve imzalı bir WebDriverAgent gerekir.",
+  "Refresh real devices": "Gerçek aygıtları yenile",
+  "Simulator ·": "Simülatör ·",
+  "iOS": "iOS",
+  "· iOS": "· iOS",
+  "Host details": "Ana bilgisayar ayrıntıları",
+  "Checking simulators…": "Simülatörler denetleniyor…",
+  "Devices": "Aygıtlar",
+  "No simulators are running.": "Çalışan simülatör yok.",
+  "Running simulators": "Çalışan simülatörler"
 }

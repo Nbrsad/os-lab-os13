@@ -382,21 +382,49 @@ def ios_simulator(root: str) -> dict:
             "configuredDevice": config.get("SIM_DEVICE") or None}
 
 
-def ios_screenshot() -> bytes:
-    """A PNG of the booted simulator's screen. Raises PlanError when nothing is booted."""
+def ios_screenshot(udid: str | None = None) -> bytes:
+    """A PNG of the selected booted simulator, or the sole/default booted device."""
+    if udid and not UDID.fullmatch(udid):
+        raise PlanError("That simulator id does not look like a UDID")
     code, output = _capture(["xcrun", "simctl", "list", "devices"], timeout=15)
-    if code != 0 or not any("Booted" in line for line in output.splitlines()):
-        raise PlanError("No iOS Simulator is booted; attach one first")
+    if code != 0 or not any("Booted" in line and (not udid or udid in line) for line in output.splitlines()):
+        raise PlanError("The selected iOS Simulator is not booted; attach it first" if udid else "No iOS Simulator is booted; attach one first")
     fd, path = tempfile.mkstemp(suffix=".png")
     try:
         os.close(fd)
-        code, output = _capture(["xcrun", "simctl", "io", "booted", "screenshot", "--type=png", path], timeout=30)
+        code, output = _capture(["xcrun", "simctl", "io", udid or "booted", "screenshot", "--type=png", path], timeout=30)
         if code != 0:
             raise PlanError("Could not take a simulator screenshot: " + output.strip()[:200])
         with open(path, "rb") as f:
             png = f.read()
         if not png.startswith(b"\x89PNG"):
             raise PlanError("The simulator screenshot was not a readable PNG")
+        return png
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def ios_real_device_screenshot(udid: str) -> bytes:
+    """Capture a selected physical device with Xcode's devicectl, without starting automation."""
+    if not isinstance(udid, str) or not UDID.fullmatch(udid):
+        raise PlanError("That device id does not look like a UDID")
+    if host_os() != "macos" or not _which("xcrun"):
+        raise PlanError("Xcode device capture is not available on this Mac")
+    fd, path = tempfile.mkstemp(suffix=".png")
+    try:
+        os.close(fd)
+        os.unlink(path)  # devicectl creates its destination file.
+        code, output = _capture(["xcrun", "devicectl", "device", "capture", "screenshot",
+                                 "--device", udid, "--destination", path], timeout=30)
+        if code != 0:
+            raise PlanError("Could not capture the real device: " + (output.strip().splitlines()[-1][:200] if output.strip() else "the device did not answer"))
+        with open(path, "rb") as f:
+            png = f.read()
+        if not png.startswith(b"\x89PNG"):
+            raise PlanError("The real-device screenshot was not a readable PNG")
         return png
     finally:
         try:
@@ -416,9 +444,8 @@ def _os_version(value) -> str:
 def ios_devices() -> dict:
     """Real iOS devices (connected or paired) via `xcrun devicectl`, read-only.
 
-    This is a listing only: driving a real device needs Developer Mode on the
-    device and a signed WebDriverAgent (see ios-lab/mac/README.md), which the
-    panel deliberately does not pretend to offer.
+    Screen capture is available separately; driving a device still needs
+    Developer Mode and a signed WebDriverAgent (ios-lab/mac/README.md).
     """
     if host_os() != "macos" or not _which("xcrun"):
         return {"available": False, "reason": "Xcode and its device tooling are not usable on this Mac",
@@ -466,11 +493,7 @@ def ios_devices() -> dict:
 
 
 def ios_device_check(udid: str) -> dict:
-    """Actively probe one device: `devicectl device info details` connects its tunnel to answer.
-
-    The passive listing reports a stale tunnelState; this is the honest
-    "is it reachable right now?" check behind the drawer's Check button.
-    """
+    """Check a device's current tunnel state; details can succeed for an offline paired device."""
     if not isinstance(udid, str) or not UDID.match(udid):
         raise PlanError("That device id does not look like a UDID")
     if host_os() != "macos" or not _which("xcrun"):
@@ -495,11 +518,14 @@ def ios_device_check(udid: str) -> dict:
     result = data.get("result") or {}
     props = result.get("deviceProperties") or {}
     connection = result.get("connectionProperties") or {}
-    return {"reachable": True, "reason": None,
+    state = connection.get("tunnelState") or "unavailable"
+    reachable = state == "connected"
+    return {"reachable": reachable,
+            "reason": None if reachable else f"Device is paired, but its connection tunnel is {state}.",
             "name": props.get("name") or "",
             "osVersion": _os_version(props.get("osVersionNumber") or props.get("osVersion")),
             "developerMode": (props.get("developerModeStatus") or "") == "enabled",
-            "state": connection.get("tunnelState") or "connected"}
+            "state": state}
 
 
 #: The previous kern.cp_time reading; CPU percent is the delta between polls.

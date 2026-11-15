@@ -168,7 +168,7 @@ export interface IosSimulatorInfo {
   booted: IosSimulatorDevice[];
   configuredDevice: string | null;
 }
-/** One real (paired or connected) iOS device from GET /api/labs/ios/devices. Read-only: the panel lists, it does not drive. */
+/** One real (paired or connected) iOS device from GET /api/labs/ios/devices. */
 export interface IosRealDevice {
   udid: string;
   name: string;
@@ -647,6 +647,8 @@ export const api = {
     call<{ reachable: boolean; reason?: string | null; name?: string; osVersion?: string; developerMode?: boolean; state?: string }>(`/api/labs/ios/devices/check?udid=${encodeURIComponent(udid)}`),
   iosResources: () => call<IosResources>(`/api/labs/ios/resources`),
   iosScreenshotUrl: "/api/labs/ios/screenshot",
+  iosSimulatorScreenshotUrl: (udid: string) => `/api/labs/ios/screenshot?device=${encodeURIComponent(udid)}`,
+  iosRealScreenshotUrl: (udid: string) => `/api/labs/ios/screenshot?udid=${encodeURIComponent(udid)}`,
   macosApps: () => call<MacAppsInfo>("/api/labs/macos/apps"),
   macosAppScreenshotUrl: (windowId: number) => `/api/labs/macos/apps/${windowId}/screenshot`,
   macosElements: (windowId: number, revision?: string) =>

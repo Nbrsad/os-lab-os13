@@ -2687,5 +2687,21 @@
   "Check": "تحقق",
   "unreachable": "لا يمكن الوصول",
   "Developer Mode is off on this device.": "وضع المطوّر متوقف على هذا الجهاز.",
-  "reachable": "يمكن الوصول"
+  "reachable": "يمكن الوصول",
+  "Device details": "تفاصيل الجهاز",
+  "Finding paired devices…": "جارٍ البحث عن الأجهزة المقترنة…",
+  "Lab status and tools": "حالة المختبر والأدوات",
+  "No paired iPhones or iPads found.": "لم يُعثر على iPhone أو iPad مقترن.",
+  "Real device": "جهاز حقيقي",
+  "Real device ·": "جهاز حقيقي ·",
+  "Real-device control needs Developer Mode and a signed WebDriverAgent.": "يتطلب التحكم في جهاز حقيقي وضع المطور وWebDriverAgent موقّعًا.",
+  "Refresh real devices": "تحديث الأجهزة الحقيقية",
+  "Simulator ·": "محاكي ·",
+  "iOS": "iOS",
+  "· iOS": "· iOS",
+  "Host details": "تفاصيل المضيف",
+  "Checking simulators…": "جارٍ فحص المحاكيات…",
+  "Devices": "الأجهزة",
+  "No simulators are running.": "لا توجد محاكيات قيد التشغيل.",
+  "Running simulators": "المحاكيات قيد التشغيل"
 }
