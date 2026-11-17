@@ -133,7 +133,11 @@ class AptSafeWrapperTest(unittest.TestCase):
 
     # -- helpers ---------------------------------------------------------
     def run_wrapper(self, *args: str, _unset: tuple = (), **env_extra: str) -> subprocess.CompletedProcess:
-        env = {k: v for k, v in os.environ.items() if not k.startswith("OS13_")}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if not k.startswith("OS13_") and k != "DEBIAN_FRONTEND"
+        }
         env.update(
             {
                 "APT_GET": self.stub.as_posix(),
@@ -193,6 +197,14 @@ class AptSafeWrapperTest(unittest.TestCase):
         # Only the version probe and the simulation: no update, no upgrade,
         # and no apply-time re-check.
         self.assertEqual(self.calls(), ["--version", "-s upgrade"])
+        self.assertNotIn("received DEBIAN_FRONTEND=noninteractive", self.calls())
+
+    def test_inherited_frontend_is_not_passed_without_noninteractive(self) -> None:
+        # ubuntu-22.04 runner images export DEBIAN_FRONTEND=noninteractive.
+        # run_wrapper strips it; only --noninteractive may put it on argv.
+        result = self.run_wrapper(DEBIAN_FRONTEND="noninteractive")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("received DEBIAN_FRONTEND=noninteractive", self.calls())
 
     def test_failed_update_stops_before_upgrade(self) -> None:
         result = self.run_wrapper("--apply", "--yes", OS13_STUB_UPDATE_FAIL="1")

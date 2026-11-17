@@ -527,6 +527,10 @@ main() {
 
   if [ "$NONINTERACTIVE" -eq 1 ]; then
     export DEBIAN_FRONTEND=noninteractive
+  else
+    # A caller (or a CI runner image) may already export this. Dry-run and a
+    # normal apply must not inherit it: only --noninteractive opts into it.
+    unset DEBIAN_FRONTEND
   fi
 
   # Logs and step captures must not be world-readable: apt output can include
